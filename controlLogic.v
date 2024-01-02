@@ -154,3 +154,107 @@ if(init_command_state == INIT_DONE && !WR)
     endcase
   end
 end
+  //Interrupt sequence
+localparam[1:0]
+ WAIT_FOR_ACK1 = 2'b01,
+ WAIT_FOR_ACK2 = 2'b10,
+ DONE = 2'b11;
+reg[1:0] sequence_state;
+always @(posedge INT_request)  
+begin
+EOI <= 0;
+//if(INTA_count != 1)         //Handling the case if an interrupt is triggered before the second ack.
+if(init_command_state == INIT_DONE)
+begin
+  INT <= 1'b1;
+  INTA_count <= 0;
+  sequence_state <= WAIT_FOR_ACK1;
+end
+end
+
+always @(negedge INTA)
+begin
+if(init_command_state == INIT_DONE)
+begin
+  case(sequence_state)
+  WAIT_FOR_ACK1:
+  begin
+  INTA_count = 1;
+  sequence_state = WAIT_FOR_ACK2;
+  end
+  WAIT_FOR_ACK2:
+  begin
+  INTA_count = 2;
+  if(ICW1[1] == 1)            //If 8259 is in single mode (Not Cascaded)
+  begin 
+  out_flag = 1;
+  bus_out = {ICW2[7:3], Interrupt_number};
+  sequence_state = DONE;
+  end
+  else if(isMaster == 1'b1 && ICW3[Interrupt_number] == 1)
+    begin
+    //The master will enable the corresponding slave to release the device routine address
+    CAS_ID <= Interrupt_number;
+    end
+  else if(isMaster == 1'b0)
+    CAS_ID <= ICW3[2:0];
+   
+  end
+  default:
+  sequence_state <= DONE;
+  endcase
+end
+end
+always@(posedge ID_match) // if the id recieved by master and current slave id are equal
+begin
+if(compare_IDs) // in case we recieved the second ack and it is in cascaded mode (slave)
+begin
+  if(interrupt_bet_2ack)
+    begin
+      INT = 0;
+      EOI = 1;
+    end
+  else
+    begin
+  bus_out <= {ICW2[7:3] , Interrupt_number};
+end
+end
+end
+assign compare_IDs = ((INTA_count == 2) && (ICW1[1] == 0) && (isMaster == 0))? 1 :0;
+
+
+//Reading from 8259
+always @(negedge RD)
+begin
+  out_flag = 1;
+  if(OCW3[1:0] == 2'b11)
+    bus_out <= ISR;
+else if(OCW3[1] == 1)
+  bus_out <= IRR;
+end
+
+
+//AEOI - EOI
+assign  OCW2_EOI = OCW2[5]; 
+always@(OCW2_EOI)
+begin
+if((ICW4[1] == 0)&&OCW2[5] == 1)
+begin
+EOI = 1;
+INT = 0;
+OCW2[5] = 0;
+end
+end
+
+
+always @(posedge INTA)
+if((ICW4[1] == 1) && INTA_count == 2'b10) //If AEOI mode is selected and the second ack is received
+begin
+EOI <= 1;
+INTA_count <= 0;
+INT <= 0;
+end 
+assign rotate = OCW2[7];    //Send signal for automatic rotation to Priority resolver
+
+
+endmodule
