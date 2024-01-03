@@ -7,14 +7,16 @@ module ControlLogic (
   input wire [7:0] IRR,
   input wire [7:0] ISR,
   input wire [1:0] ICW_RECEIVED_FLAG,
-  input wire [1:0] OCW_RECEIVED,  
-  inout wire [7:0] Internal_bus,  // Data bus from other blocks
+  input wire [1:0] OCW_RECEIVED, 
+  input wire [7:0] in_Internal_bus ,
+  output reg [7:0] out_Internal_bus = 0,
+  //inout wire [7:0] Internal_bus,  // Data bus from other blocks
   input wire INT_request,    //Input from priority resolver
   input wire INTA,           //Acknowledge from processor
   input wire isMaster,
   output reg RESET,
   output reg [1:0] to_be_received,
-  //output reg IV,      // Interrupt Vector
+  //output wire [7:0] IV,      // Interrupt Vector
   //output wire [1:0] CAS,     // Cascade Signals
   output reg EOI = 0,           // End of Interrupt
   output reg[7:0] IMR = 0,        // Interrupt Mask Register
@@ -54,7 +56,7 @@ reg out_flag = 0;
 wire OCW2_EOI = 0;
 
 assign init_done = (init_command_state == INIT_DONE)? 1 : 0;
-assign Internal_bus = (out_flag == 1) ? bus_out : 8'bz;
+//assign Internal_bus = (out_flag == 1) ? bus_out : 8'bz;
 //Reset and get ICW1
 always @(ICW_RECEIVED_FLAG)
 begin
@@ -66,7 +68,7 @@ begin
     RESET <= 1;         //Flag to be sent to all blocks to execute the reset sequence
     IMR <= 8'b00000000;
     out_flag <= 0;
-    ICW1 <= Internal_bus;
+    ICW1 <= in_Internal_bus;
     init_command_state <= GET_ICW2;
     to_be_received <= GET_ICW2;
   end 
@@ -89,7 +91,7 @@ begin
         //Clear ICW4 if IC4 bit in ICW1 is 0
         if(ICW1[0] == 0)
           ICW4 = 8'b00000001;
-        ICW2 <= Internal_bus;
+        ICW2 <= in_Internal_bus;
         if(ICW1[1] == 1'b0)
           begin
           init_command_state <= GET_ICW3;
@@ -106,7 +108,7 @@ begin
     end
     GET_ICW3:
     begin
-      ICW3 <= Internal_bus;
+      ICW3 <= in_Internal_bus;
       if(ICW1[0] == 1'b1)
           begin
           init_command_state<= GET_ICW4;
@@ -119,7 +121,7 @@ begin
       
     GET_ICW4:
     begin
-    ICW4 <= Internal_bus;
+    ICW4 <= in_Internal_bus;
     init_command_state <= INIT_DONE;
     end
     
@@ -134,27 +136,27 @@ assign LTIM = ICW1[3];
 //GET OCW
 always @(OCW_RECEIVED)
 begin
-  out_flag = 0;
+  out_flag <= 0;
 if(init_command_state == INIT_DONE && !WR)
   begin
     case(OCW_RECEIVED)
     OCW1_RECEIVED:
     begin
-      OCW1 = Internal_bus;
-      IMR = Internal_bus;
+      OCW1 <= in_Internal_bus;
+      IMR <= in_Internal_bus;
     end
     OCW2_RECEIVED:
     begin
-      OCW2 = Internal_bus;
+      OCW2 <= in_Internal_bus;
     end
     OCW3_RECEIVED:
     begin
-      OCW3 = Internal_bus;
+      OCW3 <= in_Internal_bus;
     end   
     endcase
   end
 end
-  //Interrupt sequence
+//Interrupt sequence
 localparam[1:0]
  WAIT_FOR_ACK1 = 2'b01,
  WAIT_FOR_ACK2 = 2'b10,
@@ -179,17 +181,17 @@ begin
   case(sequence_state)
   WAIT_FOR_ACK1:
   begin
-  INTA_count = 1;
-  sequence_state = WAIT_FOR_ACK2;
+  INTA_count <= 1;
+  sequence_state <= WAIT_FOR_ACK2;
   end
   WAIT_FOR_ACK2:
   begin
-  INTA_count = 2;
+  INTA_count <= 2;
   if(ICW1[1] == 1)            //If 8259 is in single mode (Not Cascaded)
   begin 
   out_flag = 1;
-  bus_out = {ICW2[7:3], Interrupt_number};
-  sequence_state = DONE;
+  out_Internal_bus <= {ICW2[7:3], Interrupt_number};
+  sequence_state <= DONE;
   end
   else if(isMaster == 1'b1 && ICW3[Interrupt_number] == 1)
     begin
@@ -211,12 +213,12 @@ if(compare_IDs) // in case we recieved the second ack and it is in cascaded mode
 begin
   if(interrupt_bet_2ack)
     begin
-      INT = 0;
-      EOI = 1;
+      INT <= 0;
+      EOI <= 1;
     end
   else
     begin
-  bus_out <= {ICW2[7:3] , Interrupt_number};
+  out_Internal_bus <= {ICW2[7:3] , Interrupt_number};
 end
 end
 end
@@ -228,9 +230,9 @@ always @(negedge RD)
 begin
   out_flag = 1;
   if(OCW3[1:0] == 2'b11)
-    bus_out <= ISR;
+    out_Internal_bus <= ISR;
 else if(OCW3[1] == 1)
-  bus_out <= IRR;
+  out_Internal_bus <= IRR;
 end
 
 
@@ -240,8 +242,8 @@ always@(OCW2_EOI)
 begin
 if((ICW4[1] == 0)&&OCW2[5] == 1)
 begin
-EOI = 1;
-INT = 0;
+EOI <= 1;
+INT <= 0;
 OCW2[5] = 0;
 end
 end
@@ -258,3 +260,5 @@ assign rotate = OCW2[7];    //Send signal for automatic rotation to Priority res
 
 
 endmodule
+
+
