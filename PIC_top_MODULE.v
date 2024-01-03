@@ -3,14 +3,15 @@
 `include "ISR.v"
 `include "IRR.v"
 `include "IMR.v"
-`include "ControlLogic.v"
+`include "control logic.v"
 `include "Cascading.v"
 
 module PIC_top_module(
   input CS,
   input WR,
   input RD,
-  inout wire[7:0] data_bus,
+  input  [7:0] input_data_bus ,
+  output wire[7:0] output_data_bus ,
   inout wire [2:0] CAS,
   input wire SP,
   input wire [7:0] IR,
@@ -22,7 +23,7 @@ module PIC_top_module(
   
   wire init_done, compare_IDs,ID_match, SP_signal, LTIM, EOI, rotate,reset, RD_signal, WR_signal, interrupt_between_2ack ,interrupt_request;
   wire [1:0] icw_flag , ocw_flag, INTA_count, to_be_received;
-  wire[7:0] internal_bus, IMR_input_content, IMR_status, IRR_status, ISR_status, ISR_set;
+  wire[7:0] input_internal_bus , output_internal_bus , IMR_input_content, IMR_status, IRR_status, ISR_status, ISR_set;
   wire [2:0] CAS_ID , Interrupt_number;
   ControlLogic  control_logic(
   .interrupt_bet_2ack(interrupt_between_2ack),
@@ -34,7 +35,9 @@ module PIC_top_module(
   .ISR(ISR_status),
   .ICW_RECEIVED_FLAG(icw_flag),
   .OCW_RECEIVED(ocw_flag),  
-  .Internal_bus(internal_bus),  // Data bus from other blocks
+  //.Internal_bus(internal_bus),  // Data bus from other blocks
+  .in_Internal_bus(input_internal_bus),
+  .out_Internal_bus(output_internal_bus),
   .INT_request(interrupt_request),    //Input from priority resolver
   .INTA(INTA),           //Acknowledge from processor
   .isMaster(SP_signal),
@@ -60,10 +63,14 @@ module PIC_top_module(
   .WR(WR),
   .CS(CS),
   .A0(A0),
-  .sys_bus(data_bus),
+  //.sys_bus(data_bus),
   .icw_flag(icw_flag),
   .ocw_flag(ocw_flag),
-  .int_bus(internal_bus),
+  //.int_bus(internal_bus),
+   .input_sys_bus(input_data_bus),
+   .input_int_bus(output_internal_bus),
+   .output_sys_bus(output_data_bus),
+  .output_int_bus(input_internal_bus),
   .RD_output(RD_signal),
   .WR_output(WR_signal)
   );
@@ -113,4 +120,6 @@ priorityResolver priorityRes(
 .Interrupt_request(interrupt_request),
  .EOI(EOI)
   ) ;
+  
+  
 endmodule
